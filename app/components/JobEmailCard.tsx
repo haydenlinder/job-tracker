@@ -1,0 +1,105 @@
+"use client";
+
+interface JobEmail {
+  id: string;
+  threadId: string;
+  subject: string;
+  from: string;
+  date: string;
+  snippet: string;
+  labels: string[];
+  category: "application" | "interview" | "offer" | "rejection" | "other";
+}
+
+interface JobEmailCardProps {
+  email: JobEmail;
+}
+
+const categoryStyles = {
+  application: {
+    bg: "bg-blue-50 dark:bg-blue-900/20",
+    border: "border-blue-200 dark:border-blue-800",
+    badge: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+    label: "Application",
+  },
+  interview: {
+    bg: "bg-green-50 dark:bg-green-900/20",
+    border: "border-green-200 dark:border-green-800",
+    badge: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
+    label: "Interview",
+  },
+  offer: {
+    bg: "bg-purple-50 dark:bg-purple-900/20",
+    border: "border-purple-200 dark:border-purple-800",
+    badge: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
+    label: "Offer",
+  },
+  rejection: {
+    bg: "bg-red-50 dark:bg-red-900/20",
+    border: "border-red-200 dark:border-red-800",
+    badge: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+    label: "Rejection",
+  },
+  other: {
+    bg: "bg-zinc-50 dark:bg-zinc-900/20",
+    border: "border-zinc-200 dark:border-zinc-700",
+    badge: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
+    label: "Other",
+  },
+};
+
+function formatDate(dateString: string): string {
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return dateString;
+  }
+}
+
+function extractSenderName(from: string): string {
+  // Extract name from "Name <email@example.com>" format
+  const match = from.match(/^([^<]+)/);
+  if (match) {
+    return match[1].trim().replace(/"/g, "");
+  }
+  return from;
+}
+
+export default function JobEmailCard({ email }: JobEmailCardProps) {
+  const style = categoryStyles[email.category];
+
+  return (
+    <div
+      className={`rounded-lg border ${style.border} ${style.bg} p-4 transition-shadow hover:shadow-md`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span
+              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${style.badge}`}
+            >
+              {style.label}
+            </span>
+            <span className="text-xs text-zinc-500 dark:text-zinc-400">
+              {formatDate(email.date)}
+            </span>
+          </div>
+          <h3 className="font-medium text-zinc-900 dark:text-zinc-100 truncate mb-1">
+            {email.subject || "(No subject)"}
+          </h3>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-2">
+            From: {extractSenderName(email.from)}
+          </p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-500 line-clamp-2">
+            {email.snippet}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
