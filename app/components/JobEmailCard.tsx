@@ -39,7 +39,7 @@ const categoryStyles: Record<CATEGORIES, styles> = {
     bg: "bg-red-50 dark:bg-red-900/20",
     border: "border-red-200 dark:border-red-800",
     badge: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
-    label: "Rejection",
+    label: "Not for me",
   },
   other: {
     bg: "bg-zinc-50 dark:bg-zinc-900/20",
