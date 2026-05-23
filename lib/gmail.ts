@@ -143,6 +143,7 @@ function hasCalendarInvite(payload: gmail_v1.Schema$MessagePart | undefined): bo
 function categorizeEmail(
   subject: string,
   snippet: string,
+  from: string,
   isCalendarInvite: boolean = false
 ): JobEmail["category"] {
   // Calendar invites are automatically categorized as interviews
@@ -153,47 +154,47 @@ function categorizeEmail(
   const text = `${subject} ${snippet}`.toLowerCase();
 
   if (
-    text.includes("opportunity")
-  ) {
-    return CATEGORIES.OPPORTUNITY;
-  }
-  if (
-    text.includes("offer") ||
-    text.includes("compensation") ||
-    text.includes("salary") ||
-    text.includes("start date")
-  ) {
-    return CATEGORIES.OFFER;
-  }
-
-  if (
-    text.includes("interview") ||
-    text.includes("phone screen") ||
-    text.includes("call") ||
-    text.includes("meet with") ||
-    text.includes("opportunity")
-
-  ) {
-    return CATEGORIES.INTERVIEW;
-  }
-
-  if (
+    (from.includes("ashbyhq") && subject.match(/your.*application/i) )||
     text.includes("regret") ||
     text.includes("unfortunately") ||
     text.includes("not moving forward") ||
-    text.includes("decided not to")
+    text.includes("decided not to") ||
+    text.includes("not an easy decision") ||
+    text.includes("at this time") 
   ) {
     return CATEGORIES.REJECTION;
   }
 
   if (
     text.includes("application") ||
-    text.includes("applied") ||
-    text.includes("thank you for")
+    text.includes("applied")
   ) {
     return CATEGORIES.APPLICATION;
   }
 
+  if (
+    text.includes("opportunity")
+  ) {
+    return CATEGORIES.OPPORTUNITY;
+  }
+  
+  if (
+    text.includes("interview") ||
+    text.includes("phone screen") ||
+    text.includes("call") ||
+    text.includes("meet with") ||
+    text.includes("next step")
+  ) {
+    return CATEGORIES.INTERVIEW;
+  }
+
+  if (
+    text.includes("start date") ||
+    text.includes("congratulations") 
+  ) {
+    return CATEGORIES.OFFER;
+  }
+  
   return CATEGORIES.OTHER;
 }
 
@@ -276,7 +277,7 @@ export async function fetchJobEmails(
         date,
         snippet,
         labels: labelIds,
-        category: categorizeEmail(subject, snippet, isCalendarInvite),
+        category: categorizeEmail(subject, snippet, from, isCalendarInvite),
       });
     }
   }
