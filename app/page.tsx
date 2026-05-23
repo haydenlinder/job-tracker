@@ -367,7 +367,7 @@ export default function Home() {
                     {stats.byCategory.rejection}
                   </div>
                   <div className="text-sm text-red-600 dark:text-red-400">
-                    Rejections
+                    Not for me
                   </div>
                 </div>
               </div>

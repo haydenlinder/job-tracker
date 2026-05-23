@@ -13,7 +13,7 @@ const categoryOptions: { value: CATEGORIES; label: string; icon: string }[] = [
   { value: CATEGORIES.APPLICATION, label: "Applications", icon: "📝" },
   { value: CATEGORIES.INTERVIEW, label: "Interviews", icon: "🎯" },
   { value: CATEGORIES.OFFER, label: "Offers", icon: "🎉" },
-  { value: CATEGORIES.REJECTION, label: "Rejections", icon: "❌" },
+  { value: CATEGORIES.REJECTION, label: "Not for me", icon: "❌" },
   { value: CATEGORIES.OPPORTUNITY, label: "Opportunity", icon: "💼" },
   { value: CATEGORIES.OTHER, label: "Other", icon: "📧" },
   { value: CATEGORIES.CONVERSATION, label: "Conversations", icon: "💬" },

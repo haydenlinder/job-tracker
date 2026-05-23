@@ -40,7 +40,7 @@ const categoryConfig = {
     countText: "text-purple-800 dark:text-purple-200",
   },
   rejection: {
-    label: "Rejections",
+    label: "Not for me",
     icon: "❌",
     headerBg: "bg-red-50 dark:bg-red-900/30",
     headerBorder: "border-red-200 dark:border-red-800",
