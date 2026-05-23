@@ -16,12 +16,35 @@ export async function GET(request: NextRequest) {
 
   try {
     const searchParams = request.nextUrl.searchParams;
-    const maxResults = parseInt(searchParams.get("maxResults") || "50", 10);
+    const startDate = searchParams.get("startDate") || undefined;
+    const endDate = searchParams.get("endDate") || undefined;
     const pageToken = searchParams.get("pageToken") || undefined;
+
+    // Validate date range is no more than 1 year
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const oneYearMs = 365 * 24 * 60 * 60 * 1000;
+      
+      if (end.getTime() - start.getTime() > oneYearMs) {
+        return NextResponse.json(
+          { error: "Date range cannot exceed 1 year" },
+          { status: 400 }
+        );
+      }
+      
+      if (start > end) {
+        return NextResponse.json(
+          { error: "Start date must be before end date" },
+          { status: 400 }
+        );
+      }
+    }
 
     const gmail = getGmailClient(accessToken, refreshToken);
     const { emails, nextPageToken } = await fetchJobEmails(gmail, {
-      maxResults,
+      startDate,
+      endDate,
       pageToken,
     });
 

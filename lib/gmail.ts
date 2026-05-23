@@ -88,10 +88,22 @@ const JOB_SEARCH_KEYWORDS = [
 /**
  * Build Gmail search query for job-related emails
  */
-function buildJobSearchQuery(): string {
+function buildJobSearchQuery(startDate?: string, endDate?: string): string {
   // Search in subject or body for job-related terms
   const keywordQueries = JOB_SEARCH_KEYWORDS.map((kw) => `"${kw}"`).join(" OR ");
-  return `(${keywordQueries})`;
+  let query = `(${keywordQueries})`;
+  
+  // Add date filters if provided (Gmail uses after: and before: with YYYY/MM/DD format)
+  if (startDate) {
+    const formattedStart = startDate.replace(/-/g, '/');
+    query += ` after:${formattedStart}`;
+  }
+  if (endDate) {
+    const formattedEnd = endDate.replace(/-/g, '/');
+    query += ` before:${formattedEnd}`;
+  }
+  
+  return query;
 }
 
 /**
@@ -205,19 +217,20 @@ function getHeader(
 export async function fetchJobEmails(
   gmail: gmail_v1.Gmail,
   options: {
-    maxResults?: number;
+    startDate?: string;
+    endDate?: string;
     pageToken?: string;
   } = {}
 ): Promise<{ emails: JobEmail[]; nextPageToken?: string }> {
-  const { maxResults = 50, pageToken } = options;
+  const { startDate, endDate, pageToken } = options;
 
-  // Search for job-related emails
-  const query = buildJobSearchQuery();
+  // Search for job-related emails with date range
+  const query = buildJobSearchQuery(startDate, endDate);
 
   const listResponse = await gmail.users.messages.list({
     userId: "me",
     q: query,
-    maxResults,
+    maxResults: 500, // Higher limit since we're filtering by date range
     pageToken,
   });
 

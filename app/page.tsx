@@ -8,8 +8,12 @@ import ConversationSection, { ConversationGroup } from "./components/Conversatio
 import { CATEGORIES, EmailStats, JobEmail } from "@/lib/types";
 import { useCategoryOverrides } from "@/lib/useCategoryOverrides";
 
-async function fetchJobEmailsApi() {
-  const res = await fetch("/api/gmail/job-emails?maxResults=50");
+async function fetchJobEmailsApi(startDate: string, endDate: string) {
+  const params = new URLSearchParams();
+  if (startDate) params.set("startDate", startDate);
+  if (endDate) params.set("endDate", endDate);
+  
+  const res = await fetch(`/api/gmail/job-emails?${params.toString()}`);
   const data = await res.json();
 
   if (!res.ok) {
@@ -19,9 +23,48 @@ async function fetchJobEmailsApi() {
   return data as { emails: JobEmail[]; stats: EmailStats };
 }
 
+// Helper to format date as YYYY-MM-DD
+function formatDateForInput(date: Date): string {
+  return date.toISOString().split('T')[0];
+}
+
+// Get default date range (last 30 days)
+function getDefaultDateRange() {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - 30);
+  return {
+    startDate: formatDateForInput(start),
+    endDate: formatDateForInput(end),
+  };
+}
+
+// Validate date range is within 1 year
+function isValidDateRange(start: string, end: string): { valid: boolean; error?: string } {
+  if (!start || !end) return { valid: true };
+  
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  const oneYearMs = 365 * 24 * 60 * 60 * 1000;
+  
+  if (startDate > endDate) {
+    return { valid: false, error: "Start date must be before end date" };
+  }
+  
+  if (endDate.getTime() - startDate.getTime() > oneYearMs) {
+    return { valid: false, error: "Date range cannot exceed 1 year" };
+  }
+  
+  return { valid: true };
+}
+
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const { overrides, setEmailCategory, setThreadCategory } = useCategoryOverrides();
+  
+  // Date range state with defaults
+  const [dateRange, setDateRange] = useState(getDefaultDateRange);
+  const [dateError, setDateError] = useState<string | null>(null);
 
   const {
     data,
@@ -30,13 +73,22 @@ export default function Home() {
     refetch,
     isFetched,
   } = useQuery({
-    queryKey: ["job-emails"],
-    queryFn: fetchJobEmailsApi,
+    queryKey: ["job-emails", dateRange.startDate, dateRange.endDate],
+    queryFn: () => fetchJobEmailsApi(dateRange.startDate, dateRange.endDate),
     enabled: false, // Don't fetch automatically, wait for user to click button
   });
 
   const emails = data?.emails ?? [];
   const stats = data?.stats ?? null;
+  
+  // Handle date changes with validation
+  const handleDateChange = (field: 'startDate' | 'endDate', value: string) => {
+    const newRange = { ...dateRange, [field]: value };
+    const validation = isValidDateRange(newRange.startDate, newRange.endDate);
+    
+    setDateRange(newRange);
+    setDateError(validation.valid ? null : validation.error || null);
+  };
   // Show data if it's been fetched OR if there's cached data available
   const hasLoaded = isFetched || data !== undefined;
 
@@ -214,72 +266,58 @@ export default function Home() {
           </div>
         ) : (
           <>
-            {/* Action Button */}
-            <div className="mb-8">
-              <button
-                onClick={() => refetch()}
-                disabled={isFetching}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed"
-              >
-                {isFetching ? (
-                  <>
-                    <svg
-                      className="animate-spin w-5 h-5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    Loading...
-                  </>
-                ) : emails.length > 0 ? (
-                  <>
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                      />
-                    </svg>
-                    Refresh Data
-                  </>
-                ) : (
-                  <>
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                      />
-                    </svg>
-                    See My Applications
-                  </>
-                )}
-              </button>
+            {/* Date Range Picker */}
+            <div className="mb-6 p-4 bg-white dark:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700">
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="flex-1 min-w-[140px]">
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={dateRange.startDate}
+                    onChange={(e) => handleDateChange('startDate', e.target.value)}
+                    max={dateRange.endDate || formatDateForInput(new Date())}
+                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div className="flex-1 min-w-[140px]">
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={dateRange.endDate}
+                    onChange={(e) => handleDateChange('endDate', e.target.value)}
+                    min={dateRange.startDate}
+                    max={formatDateForInput(new Date())}
+                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <button
+                  onClick={() => refetch()}
+                  disabled={isFetching || !!dateError}
+                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed"
+                >
+                  {isFetching ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Loading...
+                    </span>
+                  ) : (
+                    "Fetch Emails"
+                  )}
+                </button>
+              </div>
+              {dateError && (
+                <p className="mt-2 text-sm text-red-600 dark:text-red-400">{dateError}</p>
+              )}
+              <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                Select a date range up to 1 year. Defaults to the last 30 days.
+              </p>
             </div>
 
             {/* Error State */}
