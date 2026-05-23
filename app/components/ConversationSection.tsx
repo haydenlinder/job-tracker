@@ -17,6 +17,17 @@ interface ConversationSectionProps {
   onThreadCategoryChange?: (threadId: string, category: CATEGORIES) => void;
 }
 
+// Check if the user replied last in a conversation (last email has SENT label)
+function userRepliedLast(conversation: ConversationGroup): boolean {
+  if (conversation.emails.length === 0) return false;
+  // Sort emails by date to get the most recent one
+  const sortedEmails = [...conversation.emails].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+  const lastEmail = sortedEmails[0];
+  return lastEmail.labels.includes("SENT");
+}
+
 export default function ConversationSection({
   conversations,
   defaultOpen = false,
@@ -28,6 +39,15 @@ export default function ConversationSection({
   if (conversations.length === 0) {
     return null;
   }
+
+  // Sort conversations: non-replied first, replied last
+  const sortedConversations = [...conversations].sort((a, b) => {
+    const aReplied = userRepliedLast(a);
+    const bReplied = userRepliedLast(b);
+    if (aReplied && !bReplied) return 1;
+    if (!aReplied && bReplied) return -1;
+    return 0;
+  });
 
   const toggleThread = (threadId: string) => {
     const newExpanded = new Set(expandedThreads);
@@ -75,7 +95,9 @@ export default function ConversationSection({
 
       {isOpen && (
         <div className="p-4 bg-white dark:bg-zinc-900 space-y-3">
-          {conversations.map((conversation) => (
+          {sortedConversations.map((conversation) => {
+            const isReplied = userRepliedLast(conversation);
+            return (
             <div
               key={conversation.threadId}
               className="rounded-lg border border-amber-200 dark:border-amber-800"
@@ -96,6 +118,11 @@ export default function ConversationSection({
                   <span className="flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300">
                     {conversation.emails.length} emails
                   </span>
+                  {isReplied && (
+                    <span className="flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300">
+                      Replied {new Date(conversation.emails[conversation.emails.length-1]?.date).toLocaleDateString()}
+                    </span>
+                  )}
                   <svg
                     className={`flex-shrink-0 w-4 h-4 text-amber-600 dark:text-amber-400 transition-transform duration-200 ml-2 ${
                       expandedThreads.has(conversation.threadId) ? "rotate-180" : ""
@@ -125,11 +152,12 @@ export default function ConversationSection({
                 <div className="p-3 space-y-2 bg-white dark:bg-zinc-900 border-t border-amber-200 dark:border-amber-800">
                   {conversation.emails.map((email) => (
                     <JobEmailCard key={email.id} email={email} />
-                  ))}
+                  )).reverse()}
                 </div>
               )}
             </div>
-          ))}
+          );
+          })}
         </div>
       )}
     </div>
