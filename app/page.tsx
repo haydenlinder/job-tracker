@@ -92,6 +92,12 @@ export default function Home() {
   // Show data if it's been fetched OR if there's cached data available
   const hasLoaded = isFetched || data !== undefined;
 
+  // Helper to check if email is from a no-reply address
+  const isNoReplyEmail = (email: JobEmail): boolean => {
+    const fromLower = email.from.toLowerCase();
+    return fromLower.includes('no-reply@') || fromLower.includes('noreply@');
+  };
+
   // Group emails by threadId to detect conversations, respecting overrides
   const { conversations, singleEmails, movedThreads } = useMemo(() => {
     const threadMap = new Map<string, JobEmail[]>();
@@ -103,8 +109,9 @@ export default function Home() {
       threadMap.set(email.threadId, existing);
     });
     
-    // Separate conversations (2+ emails) from single emails
+    // Separate conversations (2+ non-no-reply emails) from single emails
     // Also track threads that have been moved to a different category
+    // Note: Threads where ALL emails are from no-reply addresses are NOT shown as conversations
     const conversationGroups: ConversationGroup[] = [];
     const singles: JobEmail[] = [];
     const moved: { threadId: string; emails: JobEmail[]; category: CATEGORIES }[] = [];
@@ -112,7 +119,11 @@ export default function Home() {
     threadMap.forEach((threadEmails, threadId) => {
       const threadOverride = overrides.threads[threadId];
       
-      if (threadEmails.length > 1) {
+      // Filter out no-reply emails when determining if this is a conversation
+      const nonNoReplyEmails = threadEmails.filter(e => !isNoReplyEmail(e));
+      
+      // Only treat as conversation if there are 2+ non-no-reply emails
+      if (nonNoReplyEmails.length > 1) {
         // Sort by date (oldest first) within conversation
         threadEmails.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         

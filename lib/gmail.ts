@@ -313,7 +313,7 @@ export async function fetchJobEmails(
         "gem"
       ]
 
-      if (!commonSecondLevelDomains.includes(secondLevelDomain)) {
+      if (secondLevelDomain.length > 2 && !commonSecondLevelDomains.includes(secondLevelDomain)) {
         // Search for the job application email
         // or other emails related to the conversation 
         // from other threads or email addresses
