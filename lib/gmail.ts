@@ -212,7 +212,7 @@ function getHeader(
 }
 
 /**
- * Fetch job-related emails from Gmail
+ * Fetch job-related emails from Gmail (fetches entire threads)
  */
 export async function fetchJobEmails(
   gmail: gmail_v1.Gmail,
@@ -235,36 +235,50 @@ export async function fetchJobEmails(
   });
 
   const messages = listResponse.data.messages || [];
+  
+  // Collect unique threadIds from matching messages
+  const threadIds = new Set<string>();
+  for (const message of messages) {
+    if (message.threadId) {
+      threadIds.add(message.threadId);
+    }
+  }
+
   const emails: JobEmail[] = [];
 
-  // Fetch full details for each message
-  for (const message of messages) {
-    if (!message.id) continue;
-
-    const msgResponse = await gmail.users.messages.get({
+  // Fetch full thread for each unique threadId
+  for (const threadId of threadIds) {
+    const threadResponse = await gmail.users.threads.get({
       userId: "me",
-      id: message.id,
+      id: threadId,
       format: "full",
     });
 
-    const headers = msgResponse.data.payload?.headers;
-    const subject = getHeader(headers, "Subject");
-    const from = getHeader(headers, "From");
-    const date = getHeader(headers, "Date");
-    const snippet = msgResponse.data.snippet || "";
-    const labelIds = msgResponse.data.labelIds || [];
-    const isCalendarInvite = hasCalendarInvite(msgResponse.data.payload);
+    const threadMessages = threadResponse.data.messages || [];
+    
+    // Process each message in the thread
+    for (const msg of threadMessages) {
+      if (!msg.id) continue;
 
-    emails.push({
-      id: message.id,
-      threadId: message.threadId || "",
-      subject,
-      from,
-      date,
-      snippet,
-      labels: labelIds,
-      category: categorizeEmail(subject, snippet, isCalendarInvite),
-    });
+      const headers = msg.payload?.headers;
+      const subject = getHeader(headers, "Subject");
+      const from = getHeader(headers, "From");
+      const date = getHeader(headers, "Date");
+      const snippet = msg.snippet || "";
+      const labelIds = msg.labelIds || [];
+      const isCalendarInvite = hasCalendarInvite(msg.payload);
+
+      emails.push({
+        id: msg.id,
+        threadId: threadId,
+        subject,
+        from,
+        date,
+        snippet,
+        labels: labelIds,
+        category: categorizeEmail(subject, snippet, isCalendarInvite),
+      });
+    }
   }
 
   return {
