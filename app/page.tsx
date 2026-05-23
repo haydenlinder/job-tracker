@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import UserAvatar from "./components/UserAvatar";
 import CategorySection from "./components/CategorySection";
 import ConversationSection, { ConversationGroup } from "./components/ConversationSection";
 import { CATEGORIES, EmailStats, JobEmail } from "@/lib/types";
 import { useCategoryOverrides } from "@/lib/useCategoryOverrides";
+import { useFetchedRanges, DateRange, filterEmailsByDateRange } from "@/lib/useFetchedRanges";
 
 async function fetchJobEmailsApi(startDate: string, endDate: string) {
   const params = new URLSearchParams();
@@ -29,7 +29,7 @@ function formatDateForInput(date: Date): string {
 }
 
 // Get default date range (last 30 days)
-function getDefaultDateRange() {
+function getDefaultDateRange(): DateRange {
   const end = new Date();
   const start = new Date();
   start.setDate(start.getDate() - 30);
@@ -63,23 +63,70 @@ export default function Home() {
   const { overrides, setEmailCategory, setThreadCategory } = useCategoryOverrides();
   
   // Date range state with defaults
-  const [dateRange, setDateRange] = useState(getDefaultDateRange);
+  const [dateRange, setDateRange] = useState<DateRange>(getDefaultDateRange);
   const [dateError, setDateError] = useState<string | null>(null);
 
+  // Fetched ranges tracking
   const {
-    data,
-    isFetching,
-    error,
-    refetch,
-    isFetched,
-  } = useQuery({
-    queryKey: ["job-emails", dateRange.startDate, dateRange.endDate],
-    queryFn: () => fetchJobEmailsApi(dateRange.startDate, dateRange.endDate),
-    enabled: false, // Don't fetch automatically, wait for user to click button
-  });
+    fetchedRanges,
+    cachedEmails,
+    isLoaded: isCacheLoaded,
+    addFetchedRange,
+    addEmails,
+    getUnfetchedRanges,
+    isRangeFullyFetched,
+    clearCache,
+  } = useFetchedRanges();
 
-  const emails = data?.emails ?? [];
-  
+  // Fetch state
+  const [isFetching, setIsFetching] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [hasTriggeredFetch, setHasTriggeredFetch] = useState(false);
+
+  // Get emails for current date range (from cache)
+  const emails = useMemo(() => {
+    if (!isCacheLoaded) return [];
+    return filterEmailsByDateRange(cachedEmails, dateRange);
+  }, [cachedEmails, dateRange, isCacheLoaded]);
+
+  // Smart fetch function that only fetches unfetched portions
+  const fetchEmails = useCallback(async () => {
+    setError(null);
+    setHasTriggeredFetch(true);
+    
+    const unfetchedRanges = getUnfetchedRanges(dateRange);
+    
+    // If everything is already fetched, no need to call API
+    if (unfetchedRanges.length === 0) {
+      console.log("Date range already fully cached, skipping API call");
+      return;
+    }
+    
+    setIsFetching(true);
+    console.log("Fetching unfetched ranges:", unfetchedRanges);
+    
+    try {
+      // Fetch each unfetched range
+      const allNewEmails: JobEmail[] = [];
+      
+      for (const range of unfetchedRanges) {
+        const result = await fetchJobEmailsApi(range.startDate, range.endDate);
+        allNewEmails.push(...result.emails);
+        // Add this range to the fetched ranges
+        addFetchedRange(range);
+      }
+      
+      // Add new emails to cache
+      if (allNewEmails.length > 0) {
+        addEmails(allNewEmails);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error("Failed to fetch emails"));
+    } finally {
+      setIsFetching(false);
+    }
+  }, [dateRange, getUnfetchedRanges, addFetchedRange, addEmails]);
+
   // Handle date changes with validation
   const handleDateChange = (field: 'startDate' | 'endDate', value: string) => {
     const newRange = { ...dateRange, [field]: value };
@@ -88,8 +135,15 @@ export default function Home() {
     setDateRange(newRange);
     setDateError(validation.valid ? null : validation.error || null);
   };
-  // Show data if it's been fetched OR if there's cached data available
-  const hasLoaded = isFetched || data !== undefined;
+
+  // Show data if a fetch has been triggered and cache is loaded
+  const hasLoaded = hasTriggeredFetch && isCacheLoaded;
+  
+  // Check if current range is fully cached
+  const isFullyCached = useMemo(() => {
+    if (!isCacheLoaded) return false;
+    return isRangeFullyFetched(dateRange);
+  }, [isCacheLoaded, isRangeFullyFetched, dateRange]);
 
   // Helper to check if email is from a no-reply address
   const isNoReplyEmail = (email: JobEmail): boolean => {
@@ -324,7 +378,7 @@ export default function Home() {
                   />
                 </div>
                 <button
-                  onClick={() => refetch()}
+                  onClick={() => fetchEmails()}
                   disabled={isFetching || !!dateError}
                   className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed"
                 >
@@ -344,9 +398,24 @@ export default function Home() {
               {dateError && (
                 <p className="mt-2 text-sm text-red-600 dark:text-red-400">{dateError}</p>
               )}
-              <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-                Select a date range up to 1 year. Defaults to the last 30 days.
-              </p>
+              <div className="mt-2 flex items-center justify-between">
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Select a date range up to 1 year. Defaults to the last 30 days.
+                  {isFullyCached && (
+                    <span className="ml-2 text-green-600 dark:text-green-400">
+                      ✓ Cached
+                    </span>
+                  )}
+                </p>
+                {fetchedRanges.length > 0 && (
+                  <button
+                    onClick={clearCache}
+                    className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 underline"
+                  >
+                    Clear cache
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Error State */}
@@ -357,7 +426,7 @@ export default function Home() {
             )}
 
             {/* Stats */}
-            {stats && hasLoaded && (
+            {stats && emails.length && (
               <div className="mb-8 grid grid-cols-2 sm:grid-cols-5 gap-4">
                 <div className="bg-white dark:bg-zinc-800 rounded-lg p-4 border border-zinc-200 dark:border-zinc-700">
                   <div className="text-2xl font-bold text-zinc-900 dark:text-white">
