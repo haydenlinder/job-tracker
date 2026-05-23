@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import UserAvatar from "./components/UserAvatar";
 import CategorySection from "./components/CategorySection";
+import ConversationSection, { ConversationGroup } from "./components/ConversationSection";
 import { CATEGORIES, EmailStats, JobEmail } from "@/lib/types";
 
 export default function Home() {
@@ -13,21 +14,63 @@ export default function Home() {
   const [hasLoaded, setHasLoaded] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Group emails by category
+  // Group emails by threadId to detect conversations
+  const { conversations, singleEmails } = useMemo(() => {
+    const threadMap = new Map<string, JobEmail[]>();
+    
+    // Group all emails by threadId
+    emails.forEach((email) => {
+      const existing = threadMap.get(email.threadId) || [];
+      existing.push(email);
+      threadMap.set(email.threadId, existing);
+    });
+    
+    // Separate conversations (2+ emails) from single emails
+    const conversationGroups: ConversationGroup[] = [];
+    const singles: JobEmail[] = [];
+    
+    threadMap.forEach((threadEmails, threadId) => {
+      if (threadEmails.length > 1) {
+        // Sort by date (oldest first) within conversation
+        threadEmails.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        conversationGroups.push({
+          threadId,
+          emails: threadEmails,
+          subject: threadEmails[0].subject,
+        });
+      } else {
+        singles.push(threadEmails[0]);
+      }
+    });
+    
+    // Sort conversations by most recent email
+    conversationGroups.sort((a, b) => {
+      const aLatest = new Date(a.emails[a.emails.length - 1].date).getTime();
+      const bLatest = new Date(b.emails[b.emails.length - 1].date).getTime();
+      return bLatest - aLatest;
+    });
+    
+    return { conversations: conversationGroups, singleEmails: singles };
+  }, [emails]);
+
+  // Group single emails by category (conversations are handled separately)
   const emailsByCategory = useMemo(() => {
-    const grouped: Record<CATEGORIES, JobEmail[]> = {
+    const grouped = {
       application: [] as JobEmail[],
       interview: [] as JobEmail[],
       offer: [] as JobEmail[],
       rejection: [] as JobEmail[],
       other: [] as JobEmail[],
       opportunity: [] as JobEmail[],
+      conversation: [] as JobEmail[],
     };
-    emails.forEach((email) => {
-      grouped[email.category].push(email);
+    singleEmails.forEach((email) => {
+      if (email.category !== CATEGORIES.CONVERSATION) {
+        grouped[email.category].push(email);
+      }
     });
     return grouped;
-  }, [emails]);
+  }, [singleEmails]);
 
   useEffect(() => {
     checkAuthStatus();
@@ -242,6 +285,10 @@ export default function Home() {
 
             {emails.length > 0 && (
               <div className="space-y-4">
+                <ConversationSection
+                  conversations={conversations}
+                  defaultOpen={true}
+                />
                 <CategorySection
                   category={CATEGORIES.INTERVIEW}
                   emails={emailsByCategory.interview}

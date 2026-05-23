@@ -51,6 +51,12 @@ const categoryStyles: Record<CATEGORIES, styles> = {
     badge: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
     label: "Opportunities",
   },
+  conversation: {
+    bg: "bg-amber-50 dark:bg-amber-900/20",
+    border: "border-amber-200 dark:border-amber-800",
+    badge: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
+    label: "Conversation",
+  },
 };
 
 function formatDate(dateString: string): string {
@@ -88,7 +94,7 @@ export default function JobEmailCard({ email }: JobEmailCardProps) {
           <h3 className="font-medium text-zinc-900 dark:text-zinc-100 truncate mb-1">
             {email.subject || "(No subject)"}
           </h3>
-          <a href={`https://mail.google.com/mail/u/0/#all/${email.id}`} className="text-sm underline cursor-pointer text-zinc-900 dark:text-zinc-100 truncate mb-1">
+          <a about="_blank" rel="noopener noreferrer" href={`https://mail.google.com/mail/u/0/#all/${email.id}`} className="text-sm underline cursor-pointer text-zinc-900 dark:text-zinc-100 truncate mb-1">
             View Message ↗️
           </a>
           <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-2">

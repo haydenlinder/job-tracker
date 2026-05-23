@@ -65,6 +65,15 @@ const categoryConfig = {
     countBg: "bg-zinc-200 dark:bg-zinc-700",
     countText: "text-zinc-800 dark:text-zinc-200",
   },
+  conversation: {
+    label: "Conversations",
+    icon: "💬",
+    headerBg: "bg-amber-50 dark:bg-amber-900/30",
+    headerBorder: "border-amber-200 dark:border-amber-800",
+    headerText: "text-amber-800 dark:text-amber-200",
+    countBg: "bg-amber-200 dark:bg-amber-800",
+    countText: "text-amber-800 dark:text-amber-200",
+  },
 };
 
 export default function CategorySection({

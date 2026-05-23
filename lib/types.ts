@@ -5,6 +5,7 @@ export enum CATEGORIES {
   REJECTION="rejection",
   OPPORTUNITY="opportunity",
   OTHER="other",
+  CONVERSATION="conversation",
 }
 
 export interface JobEmail {

@@ -274,6 +274,7 @@ export function getEmailStats(emails: JobEmail[]) {
       rejection: 0,
       other: 0,
       opportunity: 0,
+      conversation: 0,
     },
   };
 
