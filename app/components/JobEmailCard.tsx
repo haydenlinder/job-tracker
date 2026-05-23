@@ -66,15 +66,6 @@ function formatDate(dateString: string): string {
   }
 }
 
-function extractSenderName(from: string): string {
-  // Extract name from "Name <email@example.com>" format
-  const match = from.match(/^([^<]+)/);
-  if (match) {
-    return match[1].trim().replace(/"/g, "");
-  }
-  return from;
-}
-
 export default function JobEmailCard({ email }: JobEmailCardProps) {
   const style = categoryStyles[email.category];
 
@@ -101,7 +92,7 @@ export default function JobEmailCard({ email }: JobEmailCardProps) {
             View Message ↗️
           </a>
           <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-2">
-            From: {extractSenderName(email.from)}
+            From: {email.from}
           </p>
           <p className="text-sm text-zinc-500 dark:text-zinc-500 line-clamp-2">
             {email.snippet}
