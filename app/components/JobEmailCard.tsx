@@ -97,6 +97,9 @@ export default function JobEmailCard({ email }: JobEmailCardProps) {
           <h3 className="font-medium text-zinc-900 dark:text-zinc-100 truncate mb-1">
             {email.subject || "(No subject)"}
           </h3>
+          <a href={`https://mail.google.com/mail/u/0/#all/${email.id}`} className="text-sm underline cursor-pointer text-zinc-900 dark:text-zinc-100 truncate mb-1">
+            View Message ↗️
+          </a>
           <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-2">
             From: {extractSenderName(email.from)}
           </p>
