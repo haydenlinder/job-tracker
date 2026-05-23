@@ -51,6 +51,7 @@ export function getGmailClient(accessToken: string, refreshToken?: string) {
  */
 const JOB_SEARCH_KEYWORDS = [
   "job application",
+  "intro call",
   "your application",
   "application received",
   "application status",
