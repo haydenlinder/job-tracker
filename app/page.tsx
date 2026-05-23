@@ -3,28 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import UserAvatar from "./components/UserAvatar";
 import CategorySection from "./components/CategorySection";
-
-interface JobEmail {
-  id: string;
-  threadId: string;
-  subject: string;
-  from: string;
-  date: string;
-  snippet: string;
-  labels: string[];
-  category: "application" | "interview" | "offer" | "rejection" | "other";
-}
-
-interface EmailStats {
-  total: number;
-  byCategory: {
-    application: number;
-    interview: number;
-    offer: number;
-    rejection: number;
-    other: number;
-  };
-}
+import { CATEGORIES, EmailStats, JobEmail } from "@/lib/types";
 
 export default function Home() {
   const [emails, setEmails] = useState<JobEmail[]>([]);
@@ -36,12 +15,13 @@ export default function Home() {
 
   // Group emails by category
   const emailsByCategory = useMemo(() => {
-    const grouped = {
+    const grouped: Record<CATEGORIES, JobEmail[]> = {
       application: [] as JobEmail[],
       interview: [] as JobEmail[],
       offer: [] as JobEmail[],
       rejection: [] as JobEmail[],
       other: [] as JobEmail[],
+      opportunity: [] as JobEmail[],
     };
     emails.forEach((email) => {
       grouped[email.category].push(email);
@@ -263,25 +243,30 @@ export default function Home() {
             {emails.length > 0 && (
               <div className="space-y-4">
                 <CategorySection
-                  category="interview"
+                  category={CATEGORIES.INTERVIEW}
                   emails={emailsByCategory.interview}
                   defaultOpen={true}
                 />
                 <CategorySection
-                  category="offer"
+                  category={CATEGORIES.OPPORTUNITY}
+                  emails={emailsByCategory.opportunity}
+                  defaultOpen={true}
+                />
+                <CategorySection
+                  category={CATEGORIES.OFFER}
                   emails={emailsByCategory.offer}
                   defaultOpen={true}
                 />
                 <CategorySection
-                  category="application"
+                  category={CATEGORIES.APPLICATION}
                   emails={emailsByCategory.application}
                 />
                 <CategorySection
-                  category="rejection"
+                  category={CATEGORIES.REJECTION}
                   emails={emailsByCategory.rejection}
                 />
                 <CategorySection
-                  category="other"
+                  category={CATEGORIES.OTHER}
                   emails={emailsByCategory.other}
                 />
               </div>

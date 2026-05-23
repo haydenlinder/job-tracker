@@ -1,21 +1,20 @@
 "use client";
 
-interface JobEmail {
-  id: string;
-  threadId: string;
-  subject: string;
-  from: string;
-  date: string;
-  snippet: string;
-  labels: string[];
-  category: "application" | "interview" | "offer" | "rejection" | "other";
-}
+import { CATEGORIES, JobEmail } from "@/lib/types";
+
 
 interface JobEmailCardProps {
   email: JobEmail;
 }
 
-const categoryStyles = {
+type styles = {
+    bg: string,
+    border: string,
+    badge: string,
+    label: string,
+}
+
+const categoryStyles: Record<CATEGORIES, styles> = {
   application: {
     bg: "bg-blue-50 dark:bg-blue-900/20",
     border: "border-blue-200 dark:border-blue-800",
@@ -45,6 +44,12 @@ const categoryStyles = {
     border: "border-zinc-200 dark:border-zinc-700",
     badge: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
     label: "Other",
+  },
+  opportunity: {
+    bg: "bg-zinc-50 dark:bg-zinc-900/20",
+    border: "border-zinc-200 dark:border-zinc-700",
+    badge: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
+    label: "Opportunities",
   },
 };
 

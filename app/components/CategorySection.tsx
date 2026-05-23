@@ -2,20 +2,10 @@
 
 import { useState } from "react";
 import JobEmailCard from "./JobEmailCard";
-
-interface JobEmail {
-  id: string;
-  threadId: string;
-  subject: string;
-  from: string;
-  date: string;
-  snippet: string;
-  labels: string[];
-  category: "application" | "interview" | "offer" | "rejection" | "other";
-}
+import { CATEGORIES, JobEmail } from "@/lib/types";
 
 interface CategorySectionProps {
-  category: "application" | "interview" | "offer" | "rejection" | "other";
+  category: CATEGORIES
   emails: JobEmail[];
   defaultOpen?: boolean;
 }
@@ -59,6 +49,15 @@ const categoryConfig = {
   },
   other: {
     label: "Other",
+    icon: "📧",
+    headerBg: "bg-zinc-50 dark:bg-zinc-800/50",
+    headerBorder: "border-zinc-200 dark:border-zinc-700",
+    headerText: "text-zinc-800 dark:text-zinc-200",
+    countBg: "bg-zinc-200 dark:bg-zinc-700",
+    countText: "text-zinc-800 dark:text-zinc-200",
+  },
+  opportunity: {
+    label: "Opportunity",
     icon: "📧",
     headerBg: "bg-zinc-50 dark:bg-zinc-800/50",
     headerBorder: "border-zinc-200 dark:border-zinc-700",
