@@ -1,10 +1,12 @@
 "use client";
 
 import { CATEGORIES, JobEmail } from "@/lib/types";
-
+import CategoryDropdown from "./CategoryDropdown";
 
 interface JobEmailCardProps {
   email: JobEmail;
+  displayCategory?: CATEGORIES;
+  onCategoryChange?: (emailId: string, category: CATEGORIES) => void;
 }
 
 type styles = {
@@ -72,8 +74,9 @@ function formatDate(dateString: string): string {
   }
 }
 
-export default function JobEmailCard({ email }: JobEmailCardProps) {
-  const style = categoryStyles[email.category];
+export default function JobEmailCard({ email, displayCategory, onCategoryChange }: JobEmailCardProps) {
+  const effectiveCategory = displayCategory ?? email.category;
+  const style = categoryStyles[effectiveCategory];
 
   return (
     <div
@@ -104,6 +107,13 @@ export default function JobEmailCard({ email }: JobEmailCardProps) {
             {email.snippet}
           </p>
         </div>
+        {onCategoryChange && (
+          <CategoryDropdown
+            currentCategory={effectiveCategory}
+            onCategoryChange={(category) => onCategoryChange(email.id, category)}
+            excludeConversation={true}
+          />
+        )}
       </div>
     </div>
   );

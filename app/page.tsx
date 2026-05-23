@@ -1,21 +1,47 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import UserAvatar from "./components/UserAvatar";
 import CategorySection from "./components/CategorySection";
 import ConversationSection, { ConversationGroup } from "./components/ConversationSection";
 import { CATEGORIES, EmailStats, JobEmail } from "@/lib/types";
+import { useCategoryOverrides } from "@/lib/useCategoryOverrides";
+
+async function fetchJobEmailsApi() {
+  const res = await fetch("/api/gmail/job-emails?maxResults=50");
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to fetch emails");
+  }
+
+  return data as { emails: JobEmail[]; stats: EmailStats };
+}
 
 export default function Home() {
-  const [emails, setEmails] = useState<JobEmail[]>([]);
-  const [stats, setStats] = useState<EmailStats | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [hasLoaded, setHasLoaded] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { overrides, setEmailCategory, setThreadCategory } = useCategoryOverrides();
 
-  // Group emails by threadId to detect conversations
-  const { conversations, singleEmails } = useMemo(() => {
+  const {
+    data,
+    isFetching,
+    error,
+    refetch,
+    isFetched,
+  } = useQuery({
+    queryKey: ["job-emails"],
+    queryFn: fetchJobEmailsApi,
+    enabled: false, // Don't fetch automatically, wait for user to click button
+  });
+
+  const emails = data?.emails ?? [];
+  const stats = data?.stats ?? null;
+  // Show data if it's been fetched OR if there's cached data available
+  const hasLoaded = isFetched || data !== undefined;
+
+  // Group emails by threadId to detect conversations, respecting overrides
+  const { conversations, singleEmails, movedThreads } = useMemo(() => {
     const threadMap = new Map<string, JobEmail[]>();
     
     // Group all emails by threadId
@@ -26,18 +52,33 @@ export default function Home() {
     });
     
     // Separate conversations (2+ emails) from single emails
+    // Also track threads that have been moved to a different category
     const conversationGroups: ConversationGroup[] = [];
     const singles: JobEmail[] = [];
+    const moved: { threadId: string; emails: JobEmail[]; category: CATEGORIES }[] = [];
     
     threadMap.forEach((threadEmails, threadId) => {
+      const threadOverride = overrides.threads[threadId];
+      
       if (threadEmails.length > 1) {
         // Sort by date (oldest first) within conversation
         threadEmails.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        conversationGroups.push({
-          threadId,
-          emails: threadEmails,
-          subject: threadEmails[0].subject,
-        });
+        
+        if (threadOverride && threadOverride !== CATEGORIES.CONVERSATION) {
+          // Thread has been moved to a different category
+          moved.push({
+            threadId,
+            emails: threadEmails,
+            category: threadOverride,
+          });
+        } else {
+          // Thread stays in conversations
+          conversationGroups.push({
+            threadId,
+            emails: threadEmails,
+            subject: threadEmails[0].subject,
+          });
+        }
       } else {
         singles.push(threadEmails[0]);
       }
@@ -50,10 +91,11 @@ export default function Home() {
       return bLatest - aLatest;
     });
     
-    return { conversations: conversationGroups, singleEmails: singles };
-  }, [emails]);
+    return { conversations: conversationGroups, singleEmails: singles, movedThreads: moved };
+  }, [emails, overrides.threads]);
 
-  // Group single emails by category (conversations are handled separately)
+  // Group single emails by category, respecting overrides
+  // Also include the first email from moved threads (to represent the thread in that category)
   const emailsByCategory = useMemo(() => {
     const grouped = {
       application: [] as JobEmail[],
@@ -64,13 +106,34 @@ export default function Home() {
       opportunity: [] as JobEmail[],
       conversation: [] as JobEmail[],
     };
+    
+    // Add single emails, respecting individual email overrides
     singleEmails.forEach((email) => {
-      if (email.category !== CATEGORIES.CONVERSATION) {
-        grouped[email.category].push(email);
+      const effectiveCategory = overrides.emails[email.id] ?? email.category;
+      if (effectiveCategory !== CATEGORIES.CONVERSATION) {
+        grouped[effectiveCategory].push(email);
       }
     });
+    
+    // Add first email from moved threads to represent the thread
+    movedThreads.forEach(({ emails: threadEmails, category }) => {
+      // Use the most recent email to represent the thread
+      const representativeEmail = threadEmails[threadEmails.length - 1];
+      grouped[category].push(representativeEmail);
+    });
+    
     return grouped;
-  }, [singleEmails]);
+  }, [singleEmails, movedThreads, overrides.emails]);
+
+  // Handler for moving individual emails
+  const handleEmailCategoryChange = (emailId: string, category: CATEGORIES) => {
+    setEmailCategory(emailId, category);
+  };
+
+  // Handler for moving entire threads
+  const handleThreadCategoryChange = (threadId: string, category: CATEGORIES) => {
+    setThreadCategory(threadId, category);
+  };
 
   useEffect(() => {
     checkAuthStatus();
@@ -86,27 +149,6 @@ export default function Home() {
     }
   }
 
-  async function fetchJobEmails() {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const res = await fetch("/api/gmail/job-emails?maxResults=50");
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to fetch emails");
-      }
-
-      setEmails(data.emails);
-      setStats(data.stats);
-      setHasLoaded(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
-    } finally {
-      setIsLoading(false);
-    }
-  }
 
   return (
     <div className="flex flex-col flex-1 min-h-screen bg-zinc-50 dark:bg-black font-sans">
@@ -175,11 +217,11 @@ export default function Home() {
             {/* Action Button */}
             <div className="mb-8">
               <button
-                onClick={fetchJobEmails}
-                disabled={isLoading}
+                onClick={() => refetch()}
+                disabled={isFetching}
                 className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed"
               >
-                {isLoading ? (
+                {isFetching ? (
                   <>
                     <svg
                       className="animate-spin w-5 h-5"
@@ -201,6 +243,23 @@ export default function Home() {
                       />
                     </svg>
                     Loading...
+                  </>
+                ) : emails.length > 0 ? (
+                  <>
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                      />
+                    </svg>
+                    Refresh Data
                   </>
                 ) : (
                   <>
@@ -226,7 +285,7 @@ export default function Home() {
             {/* Error State */}
             {error && (
               <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300">
-                {error}
+                {error.message}
               </div>
             )}
 
@@ -288,33 +347,40 @@ export default function Home() {
                 <ConversationSection
                   conversations={conversations}
                   defaultOpen={true}
+                  onThreadCategoryChange={handleThreadCategoryChange}
                 />
                 <CategorySection
                   category={CATEGORIES.INTERVIEW}
                   emails={emailsByCategory.interview}
                   defaultOpen={true}
+                  onCategoryChange={handleEmailCategoryChange}
                 />
                 <CategorySection
                   category={CATEGORIES.OPPORTUNITY}
                   emails={emailsByCategory.opportunity}
                   defaultOpen={true}
+                  onCategoryChange={handleEmailCategoryChange}
                 />
                 <CategorySection
                   category={CATEGORIES.OFFER}
                   emails={emailsByCategory.offer}
                   defaultOpen={true}
+                  onCategoryChange={handleEmailCategoryChange}
                 />
                 <CategorySection
                   category={CATEGORIES.APPLICATION}
                   emails={emailsByCategory.application}
+                  onCategoryChange={handleEmailCategoryChange}
                 />
                 <CategorySection
                   category={CATEGORIES.REJECTION}
                   emails={emailsByCategory.rejection}
+                  onCategoryChange={handleEmailCategoryChange}
                 />
                 <CategorySection
                   category={CATEGORIES.OTHER}
                   emails={emailsByCategory.other}
+                  onCategoryChange={handleEmailCategoryChange}
                 />
               </div>
             )}

@@ -8,6 +8,7 @@ interface CategorySectionProps {
   category: CATEGORIES
   emails: JobEmail[];
   defaultOpen?: boolean;
+  onCategoryChange?: (emailId: string, category: CATEGORIES) => void;
 }
 
 const categoryConfig = {
@@ -80,6 +81,7 @@ export default function CategorySection({
   category,
   emails,
   defaultOpen = false,
+  onCategoryChange,
 }: CategorySectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const config = categoryConfig[category];
@@ -89,7 +91,7 @@ export default function CategorySection({
   }
 
   return (
-    <div className="rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700">
+    <div className="rounded-lg  border border-zinc-200 dark:border-zinc-700">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={`w-full flex items-center justify-between p-4 ${config.headerBg} ${config.headerBorder} border-b transition-colors hover:opacity-90 cursor-pointer`}
@@ -125,7 +127,12 @@ export default function CategorySection({
       {isOpen && (
         <div className="p-4 bg-white dark:bg-zinc-900 space-y-3">
           {emails.map((email) => (
-            <JobEmailCard key={email.id} email={email} />
+            <JobEmailCard
+              key={email.id}
+              email={email}
+              displayCategory={category}
+              onCategoryChange={onCategoryChange}
+            />
           ))}
         </div>
       )}
