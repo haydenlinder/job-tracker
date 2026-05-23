@@ -54,6 +54,7 @@ const JOB_SEARCH_KEYWORDS = [
   "intro call",
   "your application",
   "application received",
+  "applying",
   "application status",
   "interview invitation",
   "interview scheduled",
@@ -101,7 +102,10 @@ function buildJobSearchQuery(startDate?: string, endDate?: string): string {
     query += ` after:${formattedStart}`;
   }
   if (endDate) {
-    const formattedEnd = endDate.replace(/-/g, '/');
+    // Gmail's before: is exclusive, so add 1 day to include emails from the endDate
+    const endDateObj = new Date(endDate);
+    endDateObj.setDate(endDateObj.getDate() + 1);
+    const formattedEnd = endDateObj.toISOString().split('T')[0].replace(/-/g, '/');
     query += ` before:${formattedEnd}`;
   }
   
@@ -121,7 +125,10 @@ function buildJobApplicationQuery(companyName: string, startDate?: string, endDa
     query += ` after:${formattedStart}`;
   }
   if (endDate) {
-    const formattedEnd = endDate.replace(/-/g, '/');
+    // Gmail's before: is exclusive, so add 1 day to include emails from the endDate
+    const endDateObj = new Date(endDate);
+    endDateObj.setDate(endDateObj.getDate() + 1);
+    const formattedEnd = endDateObj.toISOString().split('T')[0].replace(/-/g, '/');
     query += ` before:${formattedEnd}`;
   }
   

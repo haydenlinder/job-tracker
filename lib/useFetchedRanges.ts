@@ -76,7 +76,15 @@ function mergeRanges(ranges: DateRange[]): DateRange[] {
 }
 
 /**
+ * Get today's date in YYYY-MM-DD format
+ */
+function getTodayStr(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+/**
  * Calculate the portions of the requested range that haven't been fetched yet
+ * If the requested range ends on today and was already fetched, include today for refetch
  */
 export function calculateUnfetchedRanges(
   requestedRange: DateRange,
@@ -134,6 +142,13 @@ export function calculateUnfetchedRanges(
     }
     
     unfetched = newUnfetched;
+  }
+  
+  // If the requested range ends on today and everything was already fetched,
+  // refetch today only to get any new emails that may have arrived
+  const today = getTodayStr();
+  if (unfetched.length === 0 && requestedRange.endDate === today) {
+    return [{ startDate: today, endDate: today }];
   }
   
   return unfetched;
