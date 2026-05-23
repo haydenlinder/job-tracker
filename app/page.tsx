@@ -79,7 +79,6 @@ export default function Home() {
   });
 
   const emails = data?.emails ?? [];
-  const stats = data?.stats ?? null;
   
   // Handle date changes with validation
   const handleDateChange = (field: 'startDate' | 'endDate', value: string) => {
@@ -187,6 +186,25 @@ export default function Home() {
     
     return grouped;
   }, [singleEmails, movedThreads, overrides.emails]);
+
+  // Compute stats from frontend data (respects user overrides)
+  const stats = useMemo((): EmailStats | null => {
+    if (emails.length === 0) return null;
+    
+    const byCategory: Record<CATEGORIES, number> = {
+      [CATEGORIES.APPLICATION]: emailsByCategory.application.length,
+      [CATEGORIES.INTERVIEW]: emailsByCategory.interview.length,
+      [CATEGORIES.OFFER]: emailsByCategory.offer.length,
+      [CATEGORIES.REJECTION]: emailsByCategory.rejection.length,
+      [CATEGORIES.OPPORTUNITY]: emailsByCategory.opportunity.length,
+      [CATEGORIES.OTHER]: emailsByCategory.other.length,
+      [CATEGORIES.CONVERSATION]: conversations.length,
+    };
+    
+    const total = Object.values(byCategory).reduce((sum, count) => sum + count, 0);
+    
+    return { total, byCategory };
+  }, [emails.length, emailsByCategory, conversations.length]);
 
   // Handler for moving individual emails
   const handleEmailCategoryChange = (emailId: string, category: CATEGORIES) => {
