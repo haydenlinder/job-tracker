@@ -1,3 +1,7 @@
+# Job Search Tracker
+
+<img width="512" height="930" alt="Screenshot 2026-05-24 at 8 22 32 PM" src="https://github.com/user-attachments/assets/1b6255e4-963f-497a-aa4f-9522b69c05a2" />
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
