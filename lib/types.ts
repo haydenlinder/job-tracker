@@ -16,7 +16,14 @@ export interface JobEmail {
   date: string;
   snippet: string;
   labels: string[];
-  category: CATEGORIES
+  category: CATEGORIES;
+  companyName: string;
+}
+
+export interface CompanyGroup {
+  companyName: string;
+  emails: JobEmail[];
+  category: CATEGORIES;
 }
 
 export type EmailStats = { total: number, byCategory: Record<CATEGORIES, number> }

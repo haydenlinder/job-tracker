@@ -136,6 +136,102 @@ function buildJobApplicationQuery(companyName: string, startDate?: string, endDa
 }
 
 /**
+ * Regex patterns for application verification emails
+ * Matches subjects like:
+ * - "Thank you for applying to Software Engineer at Commure"
+ * - "Thank you for your application to Addepar"
+ * - "Luma | Thanks for applying to Luma!"
+ * - "Thanks for applying to HiringCafe!"
+ */
+const APPLICATION_EMAIL_PATTERNS = [
+  // Pattern: "Thank you for applying to [Role] at [Company]" - extracts company after "at"
+  /^Thank you for applying to .+ at (.+)$/i,
+  // Pattern: "Thank you for applying to [Company]" - extracts company after "to"
+  /^Thank you for applying to ([^|]+?)!?$/i,
+  // Pattern: "Thank you for your application to [Company]" - extracts company after "to"
+  /^Thank you for your application to ([^|]+?)!?$/i,
+  // Pattern: "[Company] | Thanks for applying to [Company]!" - extracts company before "|"
+  /^([^|]+?)\s*\|\s*Thanks for applying/i,
+  // Pattern: "Thanks for applying to [Company]!" - extracts company after "to"
+  /^Thanks for applying to ([^|]+?)!?$/i,
+];
+
+/**
+ * Extract company name from application verification email subject
+ * Returns null if the subject doesn't match any known pattern
+ */
+function extractCompanyFromApplicationEmail(subject: string): string | null {
+  for (const pattern of APPLICATION_EMAIL_PATTERNS) {
+    const match = subject.match(pattern);
+    if (match && match[1]) {
+      // Clean up the company name (trim whitespace and remove trailing punctuation)
+      return match[1].trim().replace(/[!.]+$/, '');
+    }
+  }
+  return null;
+}
+
+/**
+ * Common second-level domains that are not company names (email service providers, ATS systems)
+ */
+const COMMON_SECOND_LEVEL_DOMAINS = [
+  "gmail",
+  "smartrecruiters",
+  "alexanderchapmanltd",
+  "lever",
+  "greenhouse",
+  "indeed",
+  "ashbyhq",
+  "greenhouse-mail",
+  "myworkday",
+  "governmentjobs",
+  "hiring",
+  "gem",
+  "yahoo",
+  "outlook",
+  "hotmail",
+  "aol",
+  "icloud",
+  "protonmail",
+];
+
+/**
+ * Extract company name from email
+ * Priority:
+ * 1. From application email subject patterns
+ * 2. From second-level domain (if not a common provider)
+ * 3. From the "from" header name (before the email address)
+ */
+function extractCompanyName(from: string, subject: string): string {
+  // First, try to extract from application email subject
+  const fromSubject = extractCompanyFromApplicationEmail(subject);
+  if (fromSubject) {
+    return fromSubject;
+  }
+  
+  // Second, try to extract from domain
+  const domain = from.slice(from.lastIndexOf("@") + 1).split(">")[0];
+  const domains = domain.split(".");
+  const secondLevelDomain = domains[domains.length - 2]?.toLowerCase();
+  
+  if (secondLevelDomain && 
+      secondLevelDomain.length > 2 && 
+      !COMMON_SECOND_LEVEL_DOMAINS.includes(secondLevelDomain)) {
+    // Capitalize the first letter
+    return secondLevelDomain.charAt(0).toUpperCase() + secondLevelDomain.slice(1);
+  }
+  
+  // Third, extract name from "from" header (e.g., "Company Name <email@example.com>")
+  const nameMatch = from.match(/^([^<]+)</);
+  if (nameMatch && nameMatch[1]) {
+    return nameMatch[1].trim();
+  }
+  
+  // Fallback to the email address itself
+  return from;
+}
+
+/**
  * Check if email contains a calendar invite
  */
 function hasCalendarInvite(payload: gmail_v1.Schema$MessagePart | undefined): boolean {
@@ -321,6 +417,63 @@ export async function fetchJobEmails(
         "gem"
       ]
 
+      // extract company name from application verification emails,
+      // use the gmail api to search for other emails containing that company name,
+      // and add them to the same thread as this email
+      const companyName = extractCompanyFromApplicationEmail(subject);
+      if (companyName) {
+        console.log({subject, companyName})
+        // search for other emails related to this company
+        const relatedResponse = await gmail.users.messages.list({
+          userId: "me",
+          q: buildJobSearchQuery(startDate, endDate),
+          maxResults: 10,
+        }); 
+
+        const relatedMessages = relatedResponse.data.messages || [];
+        
+        for (const relatedMsg of relatedMessages) {
+          if (!relatedMsg.id || relatedMsg.id === msg.id) continue;
+          
+          // If already processed, update its threadId to group with current conversation
+          if (processedEmailIds.has(relatedMsg.id)) {
+            const existingEmail = emails.find(e => e.id === relatedMsg.id);
+            if (existingEmail) {
+              existingEmail.threadId = threadId;
+            }
+            continue;
+          }
+          
+          // Fetch the full message details
+          const fullMsg = await gmail.users.messages.get({
+            userId: "me",
+            id: relatedMsg.id,
+            format: "full",
+          });
+          
+          const relatedHeaders = fullMsg.data.payload?.headers;
+          const relatedSubject = getHeader(relatedHeaders, "Subject");
+          const relatedFrom = getHeader(relatedHeaders, "From");
+          const relatedDate = getHeader(relatedHeaders, "Date");
+          const relatedSnippet = fullMsg.data.snippet || "";
+          const relatedLabelIds = fullMsg.data.labelIds || [];
+          const relatedIsCalendarInvite = hasCalendarInvite(fullMsg.data.payload);
+          
+          processedEmailIds.add(relatedMsg.id);
+          emails.push({
+            id: relatedMsg.id,
+            threadId: threadId, // Associate with the current thread for grouping
+            subject: relatedSubject,
+            from: relatedFrom,
+            date: relatedDate,
+            snippet: relatedSnippet,
+            labels: relatedLabelIds,
+            category: categorizeEmail(relatedSubject, relatedSnippet, relatedFrom, relatedIsCalendarInvite),
+            companyName: extractCompanyName(relatedFrom, relatedSubject),
+          });
+        }
+      }
+
       if (secondLevelDomain.length > 2 && !commonSecondLevelDomains.includes(secondLevelDomain)) {
         // Search for the job application email
         // or other emails related to the conversation 
@@ -372,6 +525,7 @@ export async function fetchJobEmails(
             snippet: relatedSnippet,
             labels: relatedLabelIds,
             category: categorizeEmail(relatedSubject, relatedSnippet, relatedFrom, relatedIsCalendarInvite),
+            companyName: extractCompanyName(relatedFrom, relatedSubject),
           });
         }
       }
@@ -386,6 +540,7 @@ export async function fetchJobEmails(
         snippet,
         labels: labelIds,
         category: categorizeEmail(subject, snippet, from, isCalendarInvite),
+        companyName: extractCompanyName(from, subject),
       });
     }
   }

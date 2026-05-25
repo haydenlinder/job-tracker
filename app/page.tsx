@@ -3,8 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import UserAvatar from "./components/UserAvatar";
 import CategorySection from "./components/CategorySection";
-import ConversationSection, { ConversationGroup } from "./components/ConversationSection";
-import { CATEGORIES, EmailStats, JobEmail } from "@/lib/types";
+import { CATEGORIES, CompanyGroup, EmailStats, JobEmail } from "@/lib/types";
 import { useCategoryOverrides } from "@/lib/useCategoryOverrides";
 import { useFetchedRanges, DateRange, filterEmailsByDateRange } from "@/lib/useFetchedRanges";
 
@@ -60,7 +59,7 @@ function isValidDateRange(start: string, end: string): { valid: boolean; error?:
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const { overrides, setEmailCategory, setThreadCategory } = useCategoryOverrides();
+  const { overrides, setThreadCategory } = useCategoryOverrides();
   
   // Date range state with defaults
   const [dateRange, setDateRange] = useState<DateRange>(getDefaultDateRange);
@@ -145,129 +144,211 @@ export default function Home() {
     return isRangeFullyFetched(dateRange);
   }, [isCacheLoaded, isRangeFullyFetched, dateRange]);
 
-  // Helper to check if email is from a no-reply address
-  const isNoReplyEmail = (email: JobEmail): boolean => {
-    const fromLower = email.from.toLowerCase();
-    return fromLower.includes('no-reply@') || fromLower.includes('noreply@');
+  // Helper function to extract company name from email (for backwards compatibility with cached emails)
+  const getCompanyName = (email: JobEmail): string => {
+    // If email already has companyName, use it
+    if (email.companyName) {
+      return email.companyName;
+    }
+    
+    // Fallback: extract from "from" header
+    // Try to get domain name
+    const from = email.from;
+    const domain = from.slice(from.lastIndexOf("@") + 1).split(">")[0];
+    const domains = domain.split(".");
+    const secondLevelDomain = domains[domains.length - 2]?.toLowerCase();
+    
+    const commonDomains = [
+      "gmail", "smartrecruiters", "lever", "greenhouse", "indeed",
+      "ashbyhq", "greenhouse-mail", "myworkday", "governmentjobs",
+      "hiring", "gem", "yahoo", "outlook", "hotmail", "aol", "icloud", "protonmail"
+    ];
+    
+    if (secondLevelDomain && secondLevelDomain.length > 2 && !commonDomains.includes(secondLevelDomain)) {
+      return secondLevelDomain.charAt(0).toUpperCase() + secondLevelDomain.slice(1);
+    }
+    
+    // Extract name from "from" header (e.g., "Company Name <email@example.com>")
+    const nameMatch = from.match(/^([^<]+)</);
+    if (nameMatch && nameMatch[1]) {
+      return nameMatch[1].trim();
+    }
+    
+    // Fallback to the email address
+    return from;
   };
 
-  // Group emails by threadId to detect conversations, respecting overrides
-  const { conversations, singleEmails, movedThreads } = useMemo(() => {
-    const threadMap = new Map<string, JobEmail[]>();
+  // Group emails by company name and then by category
+  // The company's category is determined by the most recent email's category (or override)
+  const companyGroupsByCategory = useMemo(() => {
+    // First, group all emails by company name (case-insensitive)
+    const companyMap = new Map<string, JobEmail[]>();
     
-    // Group all emails by threadId
+    // Track the user's "from" addresses to exclude them as company names
+    const userFromAddresses = new Set<string>();
+    
+    // First pass: identify user's sent emails to capture their "from" patterns
     emails.forEach((email) => {
-      const existing = threadMap.get(email.threadId) || [];
-      existing.push(email);
-      threadMap.set(email.threadId, existing);
-    });
-    
-    // Separate conversations (2+ non-no-reply emails) from single emails
-    // Also track threads that have been moved to a different category
-    // Note: Threads where ALL emails are from no-reply addresses are NOT shown as conversations
-    const conversationGroups: ConversationGroup[] = [];
-    const singles: JobEmail[] = [];
-    const moved: { threadId: string; emails: JobEmail[]; category: CATEGORIES }[] = [];
-    
-    threadMap.forEach((threadEmails, threadId) => {
-      const threadOverride = overrides.threads[threadId];
-      
-      // Filter out no-reply emails when determining if this is a conversation
-      const nonNoReplyEmails = threadEmails.filter(e => !isNoReplyEmail(e));
-      
-      // Only treat as conversation if there are 2+ non-no-reply emails
-      if (nonNoReplyEmails.length > 1) {
-        // Sort by date (oldest first) within conversation
-        threadEmails.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        
-        if (threadOverride && threadOverride !== CATEGORIES.CONVERSATION) {
-          // Thread has been moved to a different category
-          moved.push({
-            threadId,
-            emails: threadEmails,
-            category: threadOverride,
-          });
-        } else {
-          // Thread stays in conversations
-          conversationGroups.push({
-            threadId,
-            emails: threadEmails,
-            subject: threadEmails[0].subject,
-          });
+      if (email.labels.includes("SENT")) {
+        // Extract domain or name pattern from user's sent emails
+        const from = email.from.toLowerCase();
+        userFromAddresses.add(from);
+        // Also add the email domain to exclude
+        const domainMatch = from.match(/@([^>]+)/);
+        if (domainMatch) {
+          userFromAddresses.add(domainMatch[1].split(">")[0]);
         }
-      } else {
-        singles.push(threadEmails[0]);
       }
     });
     
-    // Sort conversations by most recent email
-    conversationGroups.sort((a, b) => {
-      const aLatest = new Date(a.emails[a.emails.length - 1].date).getTime();
-      const bLatest = new Date(b.emails[b.emails.length - 1].date).getTime();
-      return bLatest - aLatest;
+    emails.forEach((email) => {
+      // Skip user's sent emails - they shouldn't create their own company group
+      if (email.labels.includes("SENT")) {
+        return;
+      }
+      
+      const companyName = getCompanyName(email);
+      const normalizedCompanyName = companyName.toLowerCase();
+      
+      // Skip if this would match the user's own address
+      if (userFromAddresses.has(normalizedCompanyName)) {
+        return;
+      }
+      
+      const existing = companyMap.get(normalizedCompanyName) || [];
+      existing.push({ ...email, companyName }); // Ensure companyName is set
+      companyMap.set(normalizedCompanyName, existing);
     });
     
-    return { conversations: conversationGroups, singleEmails: singles, movedThreads: moved };
-  }, [emails, overrides.threads]);
-
-  // Group single emails by category, respecting overrides
-  // Also include the first email from moved threads (to represent the thread in that category)
-  const emailsByCategory = useMemo(() => {
-    const grouped = {
-      application: [] as JobEmail[],
-      interview: [] as JobEmail[],
-      offer: [] as JobEmail[],
-      rejection: [] as JobEmail[],
-      other: [] as JobEmail[],
-      opportunity: [] as JobEmail[],
-      conversation: [] as JobEmail[],
+    // Second pass: add user's sent emails to the appropriate company groups
+    emails.forEach((email) => {
+      if (!email.labels.includes("SENT")) {
+        return;
+      }
+      
+      // For sent emails, try to find which company they belong to
+      // by matching the thread ID or looking at other emails in the same thread
+      const existingInThread = emails.find(e => 
+        e.threadId === email.threadId && !e.labels.includes("SENT")
+      );
+      
+      if (existingInThread) {
+        const companyName = getCompanyName(existingInThread);
+        const normalizedCompanyName = companyName.toLowerCase();
+        const existing = companyMap.get(normalizedCompanyName);
+        if (existing) {
+          existing.push({ ...email, companyName }); // Add sent email to existing company group
+        }
+      }
+    });
+    
+    // Now create company groups and determine their category
+    const grouped: Record<CATEGORIES, CompanyGroup[]> = {
+      [CATEGORIES.APPLICATION]: [],
+      [CATEGORIES.INTERVIEW]: [],
+      [CATEGORIES.OFFER]: [],
+      [CATEGORIES.REJECTION]: [],
+      [CATEGORIES.OPPORTUNITY]: [],
+      [CATEGORIES.OTHER]: [],
+      [CATEGORIES.CONVERSATION]: [],
     };
     
-    // Add single emails, respecting individual email overrides
-    singleEmails.forEach((email) => {
-      const effectiveCategory = overrides.emails[email.id] ?? email.category;
-      if (effectiveCategory !== CATEGORIES.CONVERSATION) {
-        grouped[effectiveCategory].push(email);
+    companyMap.forEach((companyEmails, normalizedName) => {
+      // Sort emails by date (oldest first)
+      companyEmails.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      // Get the display company name from the first email (preserves case)
+      const displayCompanyName = companyEmails[0].companyName;
+      
+      // Get the most recent email to determine category
+      const mostRecentEmail = companyEmails[companyEmails.length - 1];
+      
+      // Check for company-level override first (using the company: prefix)
+      let effectiveCategory: CATEGORIES | null = null;
+      
+      // Check company-level override (highest priority)
+      const companyOverride = overrides.threads[`company:${normalizedName}`];
+      if (companyOverride) {
+        effectiveCategory = companyOverride;
       }
+      
+      // If no company override, check thread-level overrides
+      if (!effectiveCategory) {
+        for (const email of companyEmails) {
+          const threadOverride = overrides.threads[email.threadId];
+          if (threadOverride) {
+            effectiveCategory = threadOverride;
+            break;
+          }
+        }
+      }
+      
+      // Check individual email overrides (most recent takes precedence)
+      if (!effectiveCategory) {
+        for (let i = companyEmails.length - 1; i >= 0; i--) {
+          const emailOverride = overrides.emails[companyEmails[i].id];
+          if (emailOverride) {
+            effectiveCategory = emailOverride;
+            break;
+          }
+        }
+      }
+      
+      // If no override, use the most recent email's category
+      if (!effectiveCategory) {
+        effectiveCategory = mostRecentEmail.category;
+      }
+      
+      // Don't put company groups in "conversation" category - that's for threads only
+      if (effectiveCategory === CATEGORIES.CONVERSATION) {
+        effectiveCategory = mostRecentEmail.category;
+      }
+      
+      const companyGroup: CompanyGroup = {
+        companyName: displayCompanyName,
+        emails: companyEmails,
+        category: effectiveCategory,
+      };
+      
+      grouped[effectiveCategory].push(companyGroup);
     });
     
-    // Add first email from moved threads to represent the thread
-    movedThreads.forEach(({ emails: threadEmails, category }) => {
-      // Use the most recent email to represent the thread
-      const representativeEmail = threadEmails[threadEmails.length - 1];
-      grouped[category].push(representativeEmail);
+    // Sort each category's company groups by most recent email
+    Object.values(grouped).forEach((groups) => {
+      groups.sort((a, b) => {
+        const aLatest = new Date(a.emails[a.emails.length - 1].date).getTime();
+        const bLatest = new Date(b.emails[b.emails.length - 1].date).getTime();
+        return bLatest - aLatest;
+      });
     });
     
     return grouped;
-  }, [singleEmails, movedThreads, overrides.emails]);
+  }, [emails, overrides.threads, overrides.emails]);
 
   // Compute stats from frontend data (respects user overrides)
+  // Now counts company groups instead of individual emails
   const stats = useMemo((): EmailStats | null => {
     if (emails.length === 0) return null;
     
     const byCategory: Record<CATEGORIES, number> = {
-      [CATEGORIES.APPLICATION]: emailsByCategory.application.length,
-      [CATEGORIES.INTERVIEW]: emailsByCategory.interview.length,
-      [CATEGORIES.OFFER]: emailsByCategory.offer.length,
-      [CATEGORIES.REJECTION]: emailsByCategory.rejection.length,
-      [CATEGORIES.OPPORTUNITY]: emailsByCategory.opportunity.length,
-      [CATEGORIES.OTHER]: emailsByCategory.other.length,
-      [CATEGORIES.CONVERSATION]: conversations.length,
+      [CATEGORIES.APPLICATION]: companyGroupsByCategory[CATEGORIES.APPLICATION].length,
+      [CATEGORIES.INTERVIEW]: companyGroupsByCategory[CATEGORIES.INTERVIEW].length,
+      [CATEGORIES.OFFER]: companyGroupsByCategory[CATEGORIES.OFFER].length,
+      [CATEGORIES.REJECTION]: companyGroupsByCategory[CATEGORIES.REJECTION].length,
+      [CATEGORIES.OPPORTUNITY]: companyGroupsByCategory[CATEGORIES.OPPORTUNITY].length,
+      [CATEGORIES.OTHER]: companyGroupsByCategory[CATEGORIES.OTHER].length,
+      [CATEGORIES.CONVERSATION]: 0, // No longer used
     };
     
     const total = Object.values(byCategory).reduce((sum, count) => sum + count, 0);
     
     return { total, byCategory };
-  }, [emails.length, emailsByCategory, conversations.length]);
+  }, [emails.length, companyGroupsByCategory]);
 
-  // Handler for moving individual emails
-  const handleEmailCategoryChange = (emailId: string, category: CATEGORIES) => {
-    setEmailCategory(emailId, category);
-  };
-
-  // Handler for moving entire threads
-  const handleThreadCategoryChange = (threadId: string, category: CATEGORIES) => {
-    setThreadCategory(threadId, category);
+  // Handler for moving company groups (uses the company name as a key in threads overrides)
+  const handleCompanyGroupCategoryChange = (companyName: string, category: CATEGORIES) => {
+    // Use company name as a pseudo-thread ID for overrides
+    setThreadCategory(`company:${companyName.toLowerCase()}`, category);
   };
 
   useEffect(() => {
@@ -480,43 +561,38 @@ export default function Home() {
 
             {emails.length > 0 && (
               <div className="space-y-4">
-                <ConversationSection
-                  conversations={conversations}
-                  defaultOpen={true}
-                  onThreadCategoryChange={handleThreadCategoryChange}
-                />
                 <CategorySection
                   category={CATEGORIES.INTERVIEW}
-                  emails={emailsByCategory.interview}
+                  companyGroups={companyGroupsByCategory[CATEGORIES.INTERVIEW]}
                   defaultOpen={true}
-                  onCategoryChange={handleEmailCategoryChange}
+                  onCompanyGroupCategoryChange={handleCompanyGroupCategoryChange}
                 />
                 <CategorySection
                   category={CATEGORIES.OPPORTUNITY}
-                  emails={emailsByCategory.opportunity}
+                  companyGroups={companyGroupsByCategory[CATEGORIES.OPPORTUNITY]}
                   defaultOpen={true}
-                  onCategoryChange={handleEmailCategoryChange}
+                  onCompanyGroupCategoryChange={handleCompanyGroupCategoryChange}
                 />
                 <CategorySection
                   category={CATEGORIES.OFFER}
-                  emails={emailsByCategory.offer}
+                  companyGroups={companyGroupsByCategory[CATEGORIES.OFFER]}
                   defaultOpen={true}
-                  onCategoryChange={handleEmailCategoryChange}
+                  onCompanyGroupCategoryChange={handleCompanyGroupCategoryChange}
                 />
                 <CategorySection
                   category={CATEGORIES.APPLICATION}
-                  emails={emailsByCategory.application}
-                  onCategoryChange={handleEmailCategoryChange}
+                  companyGroups={companyGroupsByCategory[CATEGORIES.APPLICATION]}
+                  onCompanyGroupCategoryChange={handleCompanyGroupCategoryChange}
                 />
                 <CategorySection
                   category={CATEGORIES.REJECTION}
-                  emails={emailsByCategory.rejection}
-                  onCategoryChange={handleEmailCategoryChange}
+                  companyGroups={companyGroupsByCategory[CATEGORIES.REJECTION]}
+                  onCompanyGroupCategoryChange={handleCompanyGroupCategoryChange}
                 />
                 <CategorySection
                   category={CATEGORIES.OTHER}
-                  emails={emailsByCategory.other}
-                  onCategoryChange={handleEmailCategoryChange}
+                  companyGroups={companyGroupsByCategory[CATEGORIES.OTHER]}
+                  onCompanyGroupCategoryChange={handleCompanyGroupCategoryChange}
                 />
               </div>
             )}
